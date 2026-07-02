@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'com.neo.keymonitor'
-    compileSdk 34
+    compileSdk 19
 
     defaultConfig {
         applicationId "com.neo.keymonitor"
         minSdk 19
-        targetSdk 34
+        targetSdk 19
         versionCode 1
         versionName "1.0"
     }
@@ -19,8 +19,13 @@ android {
             minifyEnabled false
         }
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
+    // באנדרואיד 4.4 אנחנו לא צריכים את ספריות התמיכה המודרניות והכבדות
 }
