@@ -4,8 +4,7 @@ import android.app.Notification;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.DataInputStream;
 import java.io.OutputStream;
 
 public class ButtonMonitorService extends Service {
@@ -24,10 +23,9 @@ public class ButtonMonitorService extends Service {
     private void startForegroundServiceKitKat() {
         Notification notification = new Notification.Builder(this)
                 .setContentTitle("מנטר מקשים פעיל")
-                .setContentText("מאזין ללחצן תפריט בזמן אמת")
+                .setContentText("מאזין לדרייבר הקלט ברקע")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build();
-                
         startForeground(1, notification);
     }
 
@@ -36,53 +34,57 @@ public class ButtonMonitorService extends Service {
             @Override
             public void run() {
                 while (isRunning) {
-                    BufferedReader reader = null;
-                    OutputStream os = null;
+                    DataInputStream dis = null;
                     try {
-                        // הפעלת תהליך su בצורה יציבה ומבוקרת
+                        // פתיחת תהליך su לקריאת ה-Binary Stream של הדרייבר
                         suProcess = Runtime.getRuntime().exec("su");
-                        os = suProcess.getOutputStream();
+                        OutputStream os = suProcess.getOutputStream();
                         
-                        // שליחת הפקודה המדויקת שבדקת ועבדה ב-ADB
-                        String command = "getevent -l /dev/input/event0\n";
-                        os.write(command.getBytes("UTF-8"));
+                        // קוראים ישירות את קובץ הדרייבר ללא תיווך של getevent
+                        os.write("cat /dev/input/event0\n".getBytes());
                         os.flush();
 
-                        reader = new BufferedReader(new InputStreamReader(suProcess.getInputStream(), "UTF-8"));
-                        String line;
+                        dis = new DataInputStream(suProcess.getInputStream());
+                        byte[] buffer = new byte[16]; // כל אירוע לינוקס הוא בדיוק 16 בתים
+
                         long startTime = 0;
 
-                        // לולאת קריאה ישירה מהזרם
-                        while (isRunning && (line = reader.readLine()) != null) {
-                            // זיהוי לחיצה (DOWN)
-                            if (line.contains("KEY_MENU") && line.contains("DOWN")) {
-                                startTime = System.currentTimeMillis();
-                            } 
-                            // זיהוי שחרור (UP)
-                            else if (line.contains("KEY_MENU") && line.contains("UP")) {
-                                if (startTime != 0) {
-                                    long duration = System.currentTimeMillis() - startTime;
-                                    // בדיקה אם הלחיצה נמשכה לפחות שנייה אחת
-                                    if (duration >= 1000) {
-                                        triggerSystemUIWilon();
+                        while (isRunning) {
+                            dis.readFully(buffer); // ממתין חסכונית עד שיש אירוע פיזי
+
+                            // חילוץ הערכים מתוך ה-Byte Array (Little Endian)
+                            int type = ((buffer[9] & 0xFF) << 8) | (buffer[8] & 0xFF);
+                            int code = ((buffer[11] & 0xFF) << 8) | (buffer[10] & 0xFF);
+                            int value = ((buffer[15] & 0xFF) << 24) | ((buffer[14] & 0xFF) << 16) 
+                                      | ((buffer[13] & 0xFF) << 8) | (buffer[12] & 0xFF);
+
+                            // type == 1 (EV_KEY), code == 139 (KEY_MENU בדרייבר הפיזי)
+                            if (type == 1 && code == 139) {
+                                if (value == 1) { // לחיצה (DOWN)
+                                    startTime = System.currentTimeMillis();
+                                } else if (value == 0) { // שחרור (UP)
+                                    if (startTime != 0) {
+                                        long duration = System.currentTimeMillis() - startTime;
+                                        if (duration >= 1000) { // לחיצה ארוכה מעל שנייה
+                                            triggerSystemUIWilon();
+                                        }
+                                        startTime = 0;
                                     }
-                                    startTime = 0;
                                 }
                             }
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
                     } finally {
-                        // ניקוי וסגירה לפני ניסיון הפעלה מחדש במקרה של ניתוק
                         try {
-                            if (os != null) os.close();
-                            if (reader != null) reader.close();
+                            if (dis != null) dis.close();
                             if (suProcess != null) suProcess.destroy();
                         } catch (Exception e) {}
                     }
 
-                    // השהייה קצרה למניעת לולאה אינסופית מהירה במקרה של כשל ברוט
-                    try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
+                    if (isRunning) {
+                        try { Thread.sleep(1500); } catch (InterruptedException e) { break; }
+                    }
                 }
             }
         });
@@ -106,12 +108,8 @@ public class ButtonMonitorService extends Service {
     @Override
     public void onDestroy() {
         isRunning = false;
-        if (suProcess != null) {
-            suProcess.destroy();
-        }
-        if (monitorThread != null) {
-            monitorThread.interrupt();
-        }
+        if (suProcess != null) suProcess.destroy();
+        if (monitorThread != null) monitorThread.interrupt();
         super.onDestroy();
     }
 
