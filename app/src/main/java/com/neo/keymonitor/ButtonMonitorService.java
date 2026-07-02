@@ -5,6 +5,8 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
 
@@ -21,7 +23,6 @@ public class ButtonMonitorService extends Service {
 
     @SuppressWarnings("deprecation")
     private void startForegroundServiceKitKat() {
-        // בניית נוטיפיקציה בשיטה הישנה התואמת לאנדרואיד 4.4 ומטה
         Notification notification = new Notification.Builder(this)
                 .setContentTitle("מנטר מקשים פעיל")
                 .setContentText("סורק לחצן תפריט באנדרואיד 4.4")
@@ -46,13 +47,13 @@ public class ButtonMonitorService extends Service {
                             if (consecutiveHits >= 4) {
                                 triggerSystemUIWilon();
                                 consecutiveHits = 0;
-                                Thread.sleep(2000); 
+                                Thread.sleep(2000); // הגנה מהקפצות כפולות
                                 continue;
                             }
-                            Thread.sleep(250); 
+                            Thread.sleep(250); // קצב מהיר ברגע שמזהים לחיצה
                         } else {
                             consecutiveHits = 0;
-                            Thread.sleep(500); 
+                            Thread.sleep(500); // קצב שגרה חסכוני
                         }
                     } catch (InterruptedException e) {
                         break;
@@ -63,12 +64,34 @@ public class ButtonMonitorService extends Service {
         monitorThread.start();
     }
 
+    /**
+     * בדיקה חסכונית ויציבה של מצב הלחצן
+     */
     private boolean checkCurrentKeyStatus() {
+        // דרך א': ניסיון לקרוא ישירות מסטטוס המקלדת בלי לפתוח תהליך רוט יקר בכל פעם
         try {
-            Process process = Runtime.getRuntime().exec("su");
+            // נתיב נפוץ במעבדי Unisoc/Spreadtrum עבור כפתורים פיזיים
+            File gpioKeyFile = new File("/sys/devices/platform/soc/soc:gpio_keys/keys_status");
+            if (gpioKeyFile.exists()) {
+                BufferedReader br = new BufferedReader(new FileReader(gpioKeyFile));
+                String status = br.readLine();
+                br.close();
+                // אם הקובץ מכיל אינדיקציה שהמקש לחוץ (למשל "1" או שם המקש)
+                if (status != null && (status.contains("1") || status.toLowerCase().contains("menu"))) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            // ממשיך לדרך ב' אם הקובץ הספציפי לא קיים בגרסת הקרנל הזו
+        }
+
+        // דרך ב': דגימה מהירה באמצעות פקודת מעטפת קלילה
+        try {
+            // במקום getevent -p, נשתמש ב-dumpsys input כדי לראות אם המקש לחוץ כרגע במערכת
+            Process process = Runtime.getRuntime().exec("sh"); // "sh" רגיל מספיק לקריאת dumpsys ברוב המכשירים
             DataOutputStream os = new DataOutputStream(process.getOutputStream());
             
-            os.writeBytes("getevent -p /dev/input/event0\n");
+            os.writeBytes("dumpsys input | grep -A 10 \"Key Modifier\"\n");
             os.flush();
             os.writeBytes("exit\n");
             os.flush();
@@ -78,7 +101,8 @@ public class ButtonMonitorService extends Service {
             boolean downDetected = false;
             
             while ((line = reader.readLine()) != null) {
-                if (line.contains("KEY_MENU") && (line.contains("DOWN") || line.contains("1"))) {
+                // מחפשים עדות למקש תפריט לחוץ בסטייט הנוכחי של מנהל ה-Input
+                if (line.contains("KEY_MENU") && (line.contains("DOWN") || line.contains("PRESSED"))) {
                     downDetected = true;
                 }
             }
@@ -93,10 +117,13 @@ public class ButtonMonitorService extends Service {
         try {
             Process suProcess = Runtime.getRuntime().exec("su");
             DataOutputStream os = new DataOutputStream(suProcess.getOutputStream());
+            
+            // שליחת פקודת הפתיחה בצורה המאובטחת שבדקת ב-ADB
             os.writeBytes("service call statusbar 1\n");
             os.flush();
             os.writeBytes("exit\n");
             os.flush();
+            
             suProcess.waitFor();
         } catch (Exception e) {
             e.printStackTrace();
