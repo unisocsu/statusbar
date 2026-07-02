@@ -1,11 +1,8 @@
 package com.neo.keymonitor;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
-import android.os.Build;
 import android.os.IBinder;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -18,27 +15,16 @@ public class ButtonMonitorService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForegroundService();
+        startForegroundServiceKitKat();
         startMonitoringLoop();
     }
 
-    private void startForegroundService() {
-        String CHANNEL_ID = "key_monitor_channel";
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Key Monitor", NotificationManager.IMPORTANCE_LOW);
-            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
-        }
-        
-        Notification.Builder builder;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new Notification.Builder(this, CHANNEL_ID);
-        } else {
-            builder = new Notification.Builder(this);
-        }
-        
-        Notification notification = builder
+    @SuppressWarnings("deprecation")
+    private void startForegroundServiceKitKat() {
+        // בניית נוטיפיקציה בשיטה הישנה התואמת לאנדרואיד 4.4 ומטה
+        Notification notification = new Notification.Builder(this)
                 .setContentTitle("מנטר מקשים פעיל")
-                .setContentText("סורק לחצן תפריט בחצי/רבע שנייה")
+                .setContentText("סורק לחצן תפריט באנדרואיד 4.4")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build();
                 
