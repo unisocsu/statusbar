@@ -11,6 +11,7 @@ import java.io.DataOutputStream;
 public class ButtonMonitorService extends Service {
     private Thread monitorThread;
     private boolean isRunning = true;
+    private Process suProcess;
 
     @Override
     public void onCreate() {
@@ -23,7 +24,7 @@ public class ButtonMonitorService extends Service {
     private void startForegroundServiceKitKat() {
         Notification notification = new Notification.Builder(this)
                 .setContentTitle("מנטר מקשים פעיל")
-                .setContentText("בודק לחיצות במצב בטוח...")
+                .setContentText("מאזין ללחצן תפריט בגרסה יציבה")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build();
                 
@@ -34,17 +35,55 @@ public class ButtonMonitorService extends Service {
         monitorThread = new Thread(new Runnable() {
             @Override
             public void run() {
+                BufferedReader reader = null;
+                DataOutputStream os = null;
+
                 while (isRunning) {
                     try {
-                        // אנחנו דוגמים את המכשיר כל חצי שנייה בשגרה
-                        Thread.sleep(500);
+                        // פתיחת תהליך רוט ממוקד ישירות על החומרה שלך (event0)
+                        suProcess = Runtime.getRuntime().exec("su");
+                        os = new DataOutputStream(suProcess.getOutputStream());
+                        
+                        // שימוש בדגל -l כדי לקבל טקסט קריא (כמו שבדקת ב-ADB ועבד!)
+                        os.writeBytes("getevent -l /dev/input/event0\n");
+                        os.flush();
 
-                        if (isMenuKeyLongPressed()) {
-                            triggerSystemUIWilon();
-                            Thread.sleep(2000); // השהייה למניעת לולאה כפולה
+                        reader = new BufferedReader(new InputStreamReader(suProcess.getInputStream()));
+                        String line;
+                        long startTime = 0;
+
+                        // קריאה רציפה של הסטרים בזמן אמת בלולאה חסכונית (חוסך סוללה!)
+                        while (isRunning && (line = reader.readLine()) != null) {
+                            
+                            // 1. זיהוי תחילת לחיצה
+                            if (line.contains("KEY_MENU") && line.contains("DOWN")) {
+                                startTime = System.currentTimeMillis();
+                            } 
+                            
+                            // 2. זיהוי עזיבת המקש וחישוב הזמן
+                            else if (line.contains("KEY_MENU") && line.contains("UP")) {
+                                if (startTime != 0) {
+                                    long duration = System.currentTimeMillis() - startTime;
+                                    
+                                    // אם הלחיצה נמשכה שנייה אחת או יותר
+                                    if (duration >= 1000) {
+                                        triggerSystemUIWilon();
+                                    }
+                                    startTime = 0; // איפוס לשלב הבא
+                                }
+                            }
                         }
-                    } catch (InterruptedException e) {
-                        break;
+
+                    } catch (Exception e) {
+                        // הגנה מקריסות: אם הערוץ נסגר מסיבה כלשהי, נמתין שנייה ונפתח מחדש
+                        try { Thread.sleep(1000); } catch (InterruptedException ex) {}
+                    } finally {
+                        // סגירת משאבים מסודרת במקרה של עצירה
+                        try {
+                            if (os != null) { os.writeBytes("exit\n"); os.flush(); }
+                            if (suProcess != null) { suProcess.destroy(); }
+                            if (reader != null) { reader.close(); }
+                        } catch (Exception e) {}
                     }
                 }
             }
@@ -52,70 +91,15 @@ public class ButtonMonitorService extends Service {
         monitorThread.start();
     }
 
-    /**
-     * פונקציה חסינה שבודקת אם כפתור התפריט נלחץ לחיצה ארוכה
-     */
-    private boolean isMenuKeyLongPressed() {
-        try {
-            Process process = Runtime.getRuntime().exec("su");
-            DataOutputStream os = new DataOutputStream(process.getOutputStream());
-            
-            // אנחנו מריצים פקודה שלא נתקעת לנצח - היא בודקת את הסטטוס הנוכחי בלבד
-            os.writeBytes("getevent -p\n"); 
-            os.flush();
-            os.writeBytes("exit\n");
-            os.flush();
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            boolean foundMenuDevice = false;
-            
-            while ((line = reader.readLine()) != null) {
-                // נבדוק אילו התקנים קיימים במכשיר שמכילים את מקש התפריט
-                if (line.contains("KEY_MENU") || line.contains("008b") || line.contains("001c")) {
-                    foundMenuDevice = true;
-                }
-            }
-            process.waitFor();
-
-            // אם מצאנו שיש אירוע מקש, נבדוק ישירות ב-dumpsys בצורה פשוטה בלי סינונים כבדים
-            if (foundMenuDevice) {
-                Process checkProcess = Runtime.getRuntime().exec("su");
-                DataOutputStream checkOs = new DataOutputStream(checkProcess.getOutputStream());
-                
-                // פקודה שמציגה את מצב המקשים הנוכחי במערכת
-                checkOs.writeBytes("dumpsys input\n");
-                checkOs.flush();
-                checkOs.writeBytes("exit\n");
-                checkOs.flush();
-
-                BufferedReader checkReader = new BufferedReader(new InputStreamReader(checkProcess.getInputStream()));
-                boolean isDown = false;
-                
-                while ((line = checkReader.readLine()) != null) {
-                    // באנדרואיד 4.4, אם מקש לחוץ, מופיעה השורה "FocusedApplications" או "Key Event" עם פירוט המצב
-                    if (line.toLowerCase().contains("menu") && (line.contains("DOWN") || line.contains("pressed=true"))) {
-                        isDown = true;
-                    }
-                }
-                checkProcess.waitFor();
-                return isDown;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
     private void triggerSystemUIWilon() {
         try {
-            Process suProcess = Runtime.getRuntime().exec("su");
-            DataOutputStream os = new DataOutputStream(suProcess.getOutputStream());
+            Process actionProcess = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(actionProcess.getOutputStream());
             os.writeBytes("service call statusbar 1\n");
             os.flush();
             os.writeBytes("exit\n");
             os.flush();
-            suProcess.waitFor();
+            actionProcess.waitFor();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -124,6 +108,9 @@ public class ButtonMonitorService extends Service {
     @Override
     public void onDestroy() {
         isRunning = false;
+        if (suProcess != null) {
+            suProcess.destroy();
+        }
         if (monitorThread != null) {
             monitorThread.interrupt();
         }
