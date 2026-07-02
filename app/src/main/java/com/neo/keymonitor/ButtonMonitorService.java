@@ -4,10 +4,7 @@ import android.app.Notification;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.DataOutputStream;
 
 public class ButtonMonitorService extends Service {
@@ -25,7 +22,7 @@ public class ButtonMonitorService extends Service {
     private void startForegroundServiceKitKat() {
         Notification notification = new Notification.Builder(this)
                 .setContentTitle("מנטר מקשים פעיל")
-                .setContentText("סורק לחצן תפריט באנדרואיד 4.4")
+                .setContentText("מאזין ללחצן פיזי...")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build();
                 
@@ -36,27 +33,50 @@ public class ButtonMonitorService extends Service {
         monitorThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                int consecutiveHits = 0;
+                Process process = null;
+                DataOutputStream os = null;
+                InputStream is = null;
 
                 while (isRunning) {
                     try {
-                        boolean isKeyDown = checkCurrentKeyStatus();
+                        // פותחים חיבור רוט אחד קבוע שיקשיב ללחיצות (חוסך סוללה ב-100%)
+                        process = Runtime.getRuntime().exec("su");
+                        os = new DataOutputStream(process.getOutputStream());
+                        is = process.getInputStream();
 
-                        if (isKeyDown) {
-                            consecutiveHits++;
-                            if (consecutiveHits >= 4) {
-                                triggerSystemUIWilon();
-                                consecutiveHits = 0;
-                                Thread.sleep(2000); // הגנה מהקפצות כפולות
-                                continue;
+                        // פקודת getevent רגילה שמציגה שינויים בזמן אמת ב-event0
+                        os.writeBytes("getevent -q /dev/input/event0\n");
+                        os.flush();
+
+                        byte[] buffer = new byte[16]; // באנדרואיד ישן, כל אירוע getevent הוא באפר של 16 או 24 בתים
+                        int bytesRead;
+                        long lastDownTime = 0;
+
+                        while (isRunning && (bytesRead = is.read(buffer)) != -1) {
+                            // ברגע שמתקבל אירוע כלשהו מ-event0 (כלומר לחצת על הלחצן פיזית!)
+                            // אנחנו בודקים אם עברה שנייה מהרגע שהתחלת ללחוץ
+                            if (lastDownTime == 0) {
+                                lastDownTime = System.currentTimeMillis();
+                            } else {
+                                long duration = System.currentTimeMillis() - lastDownTime;
+                                // אם הלחיצה נמשכת מעל 1000 מילישניות (שנייה אחת)
+                                if (duration >= 1000) {
+                                    triggerSystemUIWilon();
+                                    lastDownTime = 0; // איפוס
+                                    Thread.sleep(2000); // הגנה מהקפצות
+                                }
                             }
-                            Thread.sleep(250); // קצב מהיר ברגע שמזהים לחיצה
-                        } else {
-                            consecutiveHits = 0;
-                            Thread.sleep(500); // קצב שגרה חסכוני
                         }
-                    } catch (InterruptedException e) {
-                        break;
+
+                    } catch (Exception e) {
+                        // אם הערוץ נסגר, ננסה לפתוח אותו מחדש בלולאה הבאה
+                        try { Thread.sleep(1000); } catch (InterruptedException ex) {}
+                    } finally {
+                        // ניקוי משאבים בטוח
+                        try {
+                            if (os != null) { os.writeBytes("exit\n"); os.flush(); }
+                            if (process != null) { process.destroy(); }
+                        } catch (Exception e) {}
                     }
                 }
             }
@@ -64,66 +84,14 @@ public class ButtonMonitorService extends Service {
         monitorThread.start();
     }
 
-    /**
-     * בדיקה חסכונית ויציבה של מצב הלחצן
-     */
-    private boolean checkCurrentKeyStatus() {
-        // דרך א': ניסיון לקרוא ישירות מסטטוס המקלדת בלי לפתוח תהליך רוט יקר בכל פעם
-        try {
-            // נתיב נפוץ במעבדי Unisoc/Spreadtrum עבור כפתורים פיזיים
-            File gpioKeyFile = new File("/sys/devices/platform/soc/soc:gpio_keys/keys_status");
-            if (gpioKeyFile.exists()) {
-                BufferedReader br = new BufferedReader(new FileReader(gpioKeyFile));
-                String status = br.readLine();
-                br.close();
-                // אם הקובץ מכיל אינדיקציה שהמקש לחוץ (למשל "1" או שם המקש)
-                if (status != null && (status.contains("1") || status.toLowerCase().contains("menu"))) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            // ממשיך לדרך ב' אם הקובץ הספציפי לא קיים בגרסת הקרנל הזו
-        }
-
-        // דרך ב': דגימה מהירה באמצעות פקודת מעטפת קלילה
-        try {
-            // במקום getevent -p, נשתמש ב-dumpsys input כדי לראות אם המקש לחוץ כרגע במערכת
-            Process process = Runtime.getRuntime().exec("sh"); // "sh" רגיל מספיק לקריאת dumpsys ברוב המכשירים
-            DataOutputStream os = new DataOutputStream(process.getOutputStream());
-            
-            os.writeBytes("dumpsys input | grep -A 10 \"Key Modifier\"\n");
-            os.flush();
-            os.writeBytes("exit\n");
-            os.flush();
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            boolean downDetected = false;
-            
-            while ((line = reader.readLine()) != null) {
-                // מחפשים עדות למקש תפריט לחוץ בסטייט הנוכחי של מנהל ה-Input
-                if (line.contains("KEY_MENU") && (line.contains("DOWN") || line.contains("PRESSED"))) {
-                    downDetected = true;
-                }
-            }
-            process.waitFor();
-            return downDetected;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     private void triggerSystemUIWilon() {
         try {
             Process suProcess = Runtime.getRuntime().exec("su");
             DataOutputStream os = new DataOutputStream(suProcess.getOutputStream());
-            
-            // שליחת פקודת הפתיחה בצורה המאובטחת שבדקת ב-ADB
             os.writeBytes("service call statusbar 1\n");
             os.flush();
             os.writeBytes("exit\n");
             os.flush();
-            
             suProcess.waitFor();
         } catch (Exception e) {
             e.printStackTrace();
