@@ -21,11 +21,8 @@ public class ButtonMonitorService extends Service {
 
     @SuppressWarnings("deprecation")
     private void startForegroundServiceKitKat() {
-        Notification notification = new Notification.Builder(this)
-                .setContentTitle("מנטר מקשים פעיל")
-                .setContentText("מאזין לדרייבר הקלט ברקע")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .build();
+        // יצירת נוטיפיקציה ריקה לחלוטין - עוקף את תצוגת הווילון באנדרואיד 4.4
+        Notification notification = new Notification();
         startForeground(1, notification);
     }
 
@@ -36,36 +33,32 @@ public class ButtonMonitorService extends Service {
                 while (isRunning) {
                     DataInputStream dis = null;
                     try {
-                        // פתיחת תהליך su לקריאת ה-Binary Stream של הדרייבר
                         suProcess = Runtime.getRuntime().exec("su");
                         OutputStream os = suProcess.getOutputStream();
                         
-                        // קוראים ישירות את קובץ הדרייבר ללא תיווך של getevent
                         os.write("cat /dev/input/event0\n".getBytes());
                         os.flush();
 
                         dis = new DataInputStream(suProcess.getInputStream());
-                        byte[] buffer = new byte[16]; // כל אירוע לינוקס הוא בדיוק 16 בתים
+                        byte[] buffer = new byte[16];
 
                         long startTime = 0;
 
                         while (isRunning) {
-                            dis.readFully(buffer); // ממתין חסכונית עד שיש אירוע פיזי
+                            dis.readFully(buffer);
 
-                            // חילוץ הערכים מתוך ה-Byte Array (Little Endian)
                             int type = ((buffer[9] & 0xFF) << 8) | (buffer[8] & 0xFF);
                             int code = ((buffer[11] & 0xFF) << 8) | (buffer[10] & 0xFF);
                             int value = ((buffer[15] & 0xFF) << 24) | ((buffer[14] & 0xFF) << 16) 
                                       | ((buffer[13] & 0xFF) << 8) | (buffer[12] & 0xFF);
 
-                            // type == 1 (EV_KEY), code == 139 (KEY_MENU בדרייבר הפיזי)
                             if (type == 1 && code == 139) {
-                                if (value == 1) { // לחיצה (DOWN)
+                                if (value == 1) {
                                     startTime = System.currentTimeMillis();
-                                } else if (value == 0) { // שחרור (UP)
+                                } else if (value == 0) {
                                     if (startTime != 0) {
                                         long duration = System.currentTimeMillis() - startTime;
-                                        if (duration >= 1000) { // לחיצה ארוכה מעל שנייה
+                                        if (duration >= 1000) {
                                             triggerSystemUIWilon();
                                         }
                                         startTime = 0;
