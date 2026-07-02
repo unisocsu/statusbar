@@ -5,13 +5,13 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.DataOutputStream;
 
 public class ButtonMonitorService extends Service {
     private Thread monitorThread;
     private boolean isRunning = true;
-    private Process suProcess;
 
     @Override
     public void onCreate() {
@@ -35,57 +35,74 @@ public class ButtonMonitorService extends Service {
         monitorThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                BufferedReader reader = null;
-                DataOutputStream os = null;
+                // נתיב זמני בטוח בתוך הזיכרון של המכשיר
+                String logPath = getFilesDir().getAbsolutePath() + "/ev.log";
+                File logFile = new File(logPath);
+
+                // ניקוי שאריות אם קיימות
+                if (logFile.exists()) { logFile.delete(); }
+
+                try {
+                    // הפעלת getevent ברקע שכותב ישירות לקובץ הלוג
+                    Process p = Runtime.getRuntime().exec("su");
+                    DataOutputStream os = new DataOutputStream(p.getOutputStream());
+                    os.writeBytes("getevent -l /dev/input/event0 > " + logPath + " &\n");
+                    os.flush();
+                    os.writeBytes("exit\n");
+                    os.flush();
+                    p.waitFor();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                long startTime = 0;
 
                 while (isRunning) {
                     try {
-                        // פתיחת תהליך רוט ממוקד ישירות על החומרה שלך (event0)
-                        suProcess = Runtime.getRuntime().exec("su");
-                        os = new DataOutputStream(suProcess.getOutputStream());
-                        
-                        // שימוש בדגל -l כדי לקבל טקסט קריא (כמו שבדקת ב-ADB ועבד!)
-                        os.writeBytes("getevent -l /dev/input/event0\n");
-                        os.flush();
+                        // דגימה קלה כל 200 מילישניות - לא מעמיס על המעבד
+                        Thread.sleep(2000); 
 
-                        reader = new BufferedReader(new InputStreamReader(suProcess.getInputStream()));
+                        if (!logFile.exists() || logFile.length() == 0) {
+                            continue;
+                        }
+
+                        // קריאת המצב מתוך קובץ הלוג הזמני
+                        BufferedReader br = new BufferedReader(new FileReader(logFile));
                         String line;
-                        long startTime = 0;
-
-                        // קריאה רציפה של הסטרים בזמן אמת בלולאה חסכונית (חוסך סוללה!)
-                        while (isRunning && (line = reader.readLine()) != null) {
-                            
-                            // 1. זיהוי תחילת לחיצה
-                            if (line.contains("KEY_MENU") && line.contains("DOWN")) {
-                                startTime = System.currentTimeMillis();
-                            } 
-                            
-                            // 2. זיהוי עזיבת המקש וחישוב הזמן
-                            else if (line.contains("KEY_MENU") && line.contains("UP")) {
-                                if (startTime != 0) {
-                                    long duration = System.currentTimeMillis() - startTime;
-                                    
-                                    // אם הלחיצה נמשכה שנייה אחת או יותר
-                                    if (duration >= 1000) {
-                                        triggerSystemUIWilon();
+                        
+                        while ((line = br.readLine()) != null) {
+                            if (line.contains("KEY_MENU")) {
+                                if (line.contains("DOWN")) {
+                                    startTime = System.currentTimeMillis();
+                                } else if (line.contains("UP")) {
+                                    if (startTime != 0) {
+                                        long duration = System.currentTimeMillis() - startTime;
+                                        // לחיצה ארוכה של מעל שנייה
+                                        if (duration >= 1000) {
+                                            triggerSystemUIWilon();
+                                        }
+                                        startTime = 0;
                                     }
-                                    startTime = 0; // איפוס לשלב הבא
                                 }
                             }
                         }
+                        br.close();
+
+                        // נקה את הקובץ מדי פעם שלא יגדל יותר מדי בזיכרון
+                        if (logFile.length() > 50000) {
+                            Runtime.getRuntime().exec("su -c '> " + logPath + "'").waitFor();
+                        }
 
                     } catch (Exception e) {
-                        // הגנה מקריסות: אם הערוץ נסגר מסיבה כלשהי, נמתין שנייה ונפתח מחדש
-                        try { Thread.sleep(1000); } catch (InterruptedException ex) {}
-                    } finally {
-                        // סגירת משאבים מסודרת במקרה של עצירה
-                        try {
-                            if (os != null) { os.writeBytes("exit\n"); os.flush(); }
-                            if (suProcess != null) { suProcess.destroy(); }
-                            if (reader != null) { reader.close(); }
-                        } catch (Exception e) {}
+                        e.printStackTrace();
                     }
                 }
+
+                // עצירה מסודרת וניקוי
+                try {
+                    Runtime.getRuntime().exec("su -c 'pkill getevent'").waitFor();
+                    if (logFile.exists()) { logFile.delete(); }
+                } catch (Exception e) {}
             }
         });
         monitorThread.start();
@@ -108,9 +125,6 @@ public class ButtonMonitorService extends Service {
     @Override
     public void onDestroy() {
         isRunning = false;
-        if (suProcess != null) {
-            suProcess.destroy();
-        }
         if (monitorThread != null) {
             monitorThread.interrupt();
         }
