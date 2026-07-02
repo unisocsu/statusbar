@@ -5,13 +5,13 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.DataOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 
 public class ButtonMonitorService extends Service {
     private Thread monitorThread;
     private boolean isRunning = true;
+    private Process suProcess;
 
     @Override
     public void onCreate() {
@@ -24,7 +24,7 @@ public class ButtonMonitorService extends Service {
     private void startForegroundServiceKitKat() {
         Notification notification = new Notification.Builder(this)
                 .setContentTitle("מנטר מקשים פעיל")
-                .setContentText("מאזין ללחצן תפריט בגרסה יציבה")
+                .setContentText("מאזין ללחצן תפריט בזמן אמת")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build();
                 
@@ -35,74 +35,55 @@ public class ButtonMonitorService extends Service {
         monitorThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                // נתיב זמני בטוח בתוך הזיכרון של המכשיר
-                String logPath = getFilesDir().getAbsolutePath() + "/ev.log";
-                File logFile = new File(logPath);
-
-                // ניקוי שאריות אם קיימות
-                if (logFile.exists()) { logFile.delete(); }
-
-                try {
-                    // הפעלת getevent ברקע שכותב ישירות לקובץ הלוג
-                    Process p = Runtime.getRuntime().exec("su");
-                    DataOutputStream os = new DataOutputStream(p.getOutputStream());
-                    os.writeBytes("getevent -l /dev/input/event0 > " + logPath + " &\n");
-                    os.flush();
-                    os.writeBytes("exit\n");
-                    os.flush();
-                    p.waitFor();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                long startTime = 0;
-
                 while (isRunning) {
+                    BufferedReader reader = null;
+                    OutputStream os = null;
                     try {
-                        // דגימה קלה כל 200 מילישניות - לא מעמיס על המעבד
-                        Thread.sleep(2000); 
-
-                        if (!logFile.exists() || logFile.length() == 0) {
-                            continue;
-                        }
-
-                        // קריאת המצב מתוך קובץ הלוג הזמני
-                        BufferedReader br = new BufferedReader(new FileReader(logFile));
-                        String line;
+                        // הפעלת תהליך su בצורה יציבה ומבוקרת
+                        suProcess = Runtime.getRuntime().exec("su");
+                        os = suProcess.getOutputStream();
                         
-                        while ((line = br.readLine()) != null) {
-                            if (line.contains("KEY_MENU")) {
-                                if (line.contains("DOWN")) {
-                                    startTime = System.currentTimeMillis();
-                                } else if (line.contains("UP")) {
-                                    if (startTime != 0) {
-                                        long duration = System.currentTimeMillis() - startTime;
-                                        // לחיצה ארוכה של מעל שנייה
-                                        if (duration >= 1000) {
-                                            triggerSystemUIWilon();
-                                        }
-                                        startTime = 0;
+                        // שליחת הפקודה המדויקת שבדקת ועבדה ב-ADB
+                        String command = "getevent -l /dev/input/event0\n";
+                        os.write(command.getBytes("UTF-8"));
+                        os.flush();
+
+                        reader = new BufferedReader(new InputStreamReader(suProcess.getInputStream(), "UTF-8"));
+                        String line;
+                        long startTime = 0;
+
+                        // לולאת קריאה ישירה מהזרם
+                        while (isRunning && (line = reader.readLine()) != null) {
+                            // זיהוי לחיצה (DOWN)
+                            if (line.contains("KEY_MENU") && line.contains("DOWN")) {
+                                startTime = System.currentTimeMillis();
+                            } 
+                            // זיהוי שחרור (UP)
+                            else if (line.contains("KEY_MENU") && line.contains("UP")) {
+                                if (startTime != 0) {
+                                    long duration = System.currentTimeMillis() - startTime;
+                                    // בדיקה אם הלחיצה נמשכה לפחות שנייה אחת
+                                    if (duration >= 1000) {
+                                        triggerSystemUIWilon();
                                     }
+                                    startTime = 0;
                                 }
                             }
                         }
-                        br.close();
-
-                        // נקה את הקובץ מדי פעם שלא יגדל יותר מדי בזיכרון
-                        if (logFile.length() > 50000) {
-                            Runtime.getRuntime().exec("su -c '> " + logPath + "'").waitFor();
-                        }
-
                     } catch (Exception e) {
                         e.printStackTrace();
+                    } finally {
+                        // ניקוי וסגירה לפני ניסיון הפעלה מחדש במקרה של ניתוק
+                        try {
+                            if (os != null) os.close();
+                            if (reader != null) reader.close();
+                            if (suProcess != null) suProcess.destroy();
+                        } catch (Exception e) {}
                     }
-                }
 
-                // עצירה מסודרת וניקוי
-                try {
-                    Runtime.getRuntime().exec("su -c 'pkill getevent'").waitFor();
-                    if (logFile.exists()) { logFile.delete(); }
-                } catch (Exception e) {}
+                    // השהייה קצרה למניעת לולאה אינסופית מהירה במקרה של כשל ברוט
+                    try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
+                }
             }
         });
         monitorThread.start();
@@ -111,10 +92,10 @@ public class ButtonMonitorService extends Service {
     private void triggerSystemUIWilon() {
         try {
             Process actionProcess = Runtime.getRuntime().exec("su");
-            DataOutputStream os = new DataOutputStream(actionProcess.getOutputStream());
-            os.writeBytes("service call statusbar 1\n");
+            OutputStream os = actionProcess.getOutputStream();
+            os.write("service call statusbar 1\n".getBytes());
             os.flush();
-            os.writeBytes("exit\n");
+            os.write("exit\n".getBytes());
             os.flush();
             actionProcess.waitFor();
         } catch (Exception e) {
@@ -125,6 +106,9 @@ public class ButtonMonitorService extends Service {
     @Override
     public void onDestroy() {
         isRunning = false;
+        if (suProcess != null) {
+            suProcess.destroy();
+        }
         if (monitorThread != null) {
             monitorThread.interrupt();
         }
