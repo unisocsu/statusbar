@@ -1,0 +1,33 @@
+name: Build Android Key Monitor
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Change Wrapper Permissions
+      run: chmod +x gradlew || true
+
+    - name: Build with Gradle
+      run: ./gradlew assembleDebug
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: key-monitor-debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
