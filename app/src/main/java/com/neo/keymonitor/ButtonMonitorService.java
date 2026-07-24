@@ -27,7 +27,8 @@ public class ButtonMonitorService extends Service {
         startMonitoringLoop();
     }
 
-    // הפעלה שקטה ללא הודעה בווילון ההתראות באנדרואיד 4.4 🤫
+    // הפעלה שקטה ללא הודעה בווילון ההתראות (מותאם לאנדרואיד 4.4 KitKat) 🤫
+    @SuppressWarnings("deprecation")
     private void startForegroundServiceKitKat() {
         Notification notification = new Notification();
         startForeground(1, notification);
@@ -40,41 +41,45 @@ public class ButtonMonitorService extends Service {
                 while (isRunning) {
                     DataInputStream dis = null;
                     try {
+                        // פתיחת תהליך root לקריאת הדרייבר הבינארי ⚡
                         suProcess = Runtime.getRuntime().exec("su");
                         OutputStream os = suProcess.getOutputStream();
                         
-                        // קריאת אירועי הדרייבר הבינארי ללא תיווך ⚡
+                        // קריאה ישירה של הסטרים מהדרייבר
                         os.write("cat /dev/input/event0\n".getBytes());
                         os.flush();
 
                         dis = new DataInputStream(suProcess.getInputStream());
-                        byte[] buffer = new byte[16];
+                        byte[] buffer = new byte[16]; // אירוע לינוקס תקני מורכב מ-16 בתים
 
                         long startTimeMenu = 0;
                         long startTimePound = 0;
                         long startTimeFive = 0;
 
                         while (isRunning) {
-                            dis.readFully(buffer);
+                            dis.readFully(buffer); // המתנה חסכונית בזכרון לאירוע מקש
 
+                            // חילוץ הערכים מתוך ה-Byte Array
                             int type = ((buffer[9] & 0xFF) << 8) | (buffer[8] & 0xFF);
                             int code = ((buffer[11] & 0xFF) << 8) | (buffer[10] & 0xFF);
                             int value = ((buffer[15] & 0xFF) << 24) | ((buffer[14] & 0xFF) << 16) 
                                       | ((buffer[13] & 0xFF) << 8) | (buffer[12] & 0xFF);
 
-                            // 1. ניטור מקש Menu (קוד 139) 📜 - פתיחת וילון הסטטוס באר
+                            // 1. ניטור מקש Menu (קוד 139) 📜 -> פתיחת וילון הסטטוס באר
                             if (type == 1 && code == 139) {
-                                if (value == 1) {
+                                if (value == 1) { // בלחיצה (DOWN)
                                     startTimeMenu = System.currentTimeMillis();
-                                } else if (value == 0 && startTimeMenu != 0) {
+                                } else if (value == 0 && startTimeMenu != 0) { // בשחרור (UP)
                                     if (System.currentTimeMillis() - startTimeMenu >= 1000) {
-                                        triggerSystemUIWilon();
+                                        if (prefs.getBoolean("enable_wilon", true)) {
+                                            triggerSystemUIWilon();
+                                        }
                                     }
                                     startTimeMenu = 0;
                                 }
                             }
 
-                            // 2. ניטור מקש # (קוד 228) 📱 - פתיחת תפריט אפליקציות אחרונות (Recents)
+                            // 2. ניטור מקש # (קוד 228) 📱 -> פתיחת תפריט אפליקציות אחרונות (Recents)
                             if (type == 1 && code == 228) {
                                 if (value == 1) {
                                     startTimePound = System.currentTimeMillis();
@@ -88,7 +93,7 @@ public class ButtonMonitorService extends Service {
                                 }
                             }
 
-                            // 3. ניטור מקש 5 (קוד 6) 🖱️ - הפעלת עכבר וירטואלי
+                            // 3. ניטור מקש 5 (קוד 6) 🖱️ -> הפעלת עכבר וירטואלי לפי אפליקציה
                             if (type == 1 && code == 6) {
                                 if (value == 1) {
                                     startTimeFive = System.currentTimeMillis();
@@ -102,7 +107,7 @@ public class ButtonMonitorService extends Service {
                                 }
                             }
 
-                            // 4. אכיפת נעילת שורת הסטטוס 🔒 - בהתאם למצב האפליקציה שבקדמה
+                            // 4. אכיפת נעילת שורת הסטטוס 🔒 -> בהתאם לאפליקציה שבקדמה
                             enforceStatusBarPolicy();
                         }
                     } catch (Exception e) {
@@ -175,14 +180,14 @@ public class ButtonMonitorService extends Service {
 
         int mode = prefs.getInt("statusbar_" + currentPackage, 1); // 0=Allow, 1=Block, 2=Ask
 
-        if (mode == 1) { // חסום הסתרה - השאר את שורת הסטטוס גלויה תמיד
+        if (mode == 1) { // חסום הסתרה - מונע מעבר למסך מלא
             try {
                 Runtime.getRuntime().exec("su -c settings put global policy_control null");
             } catch (Exception e) {}
         }
     }
 
-    // זיהוי שם החבילה (Package Name) של האפליקציה הפעילה כרגע על המסך 🔍
+    // זיהוי שם החבילה (Package Name) של האפליקציה שבקדמת המסך 🔍
     private String getForegroundPackage() {
         ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         List<ActivityManager.RunningTaskInfo> taskInfo = am.getRunningTasks(1);
