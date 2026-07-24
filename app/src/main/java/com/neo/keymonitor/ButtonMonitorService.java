@@ -27,7 +27,6 @@ public class ButtonMonitorService extends Service {
         startMonitoringLoop();
     }
 
-    // הפעלה שקטה ללא הודעה בווילון ההתראות (מותאם לאנדרואיד 4.4 KitKat) 🤫
     @SuppressWarnings("deprecation")
     private void startForegroundServiceKitKat() {
         Notification notification = new Notification();
@@ -41,35 +40,33 @@ public class ButtonMonitorService extends Service {
                 while (isRunning) {
                     DataInputStream dis = null;
                     try {
-                        // פתיחת תהליך root לקריאת הדרייבר הבינארי ⚡
+                        // פתיחת תהליך Root יחיד ויציב 🔓
                         suProcess = Runtime.getRuntime().exec("su");
                         OutputStream os = suProcess.getOutputStream();
                         
-                        // קריאה ישירה של הסטרים מהדרייבר
                         os.write("cat /dev/input/event0\n".getBytes());
                         os.flush();
 
                         dis = new DataInputStream(suProcess.getInputStream());
-                        byte[] buffer = new byte[16]; // אירוע לינוקס תקני מורכב מ-16 בתים
+                        byte[] buffer = new byte[16];
 
                         long startTimeMenu = 0;
                         long startTimePound = 0;
                         long startTimeFive = 0;
 
                         while (isRunning) {
-                            dis.readFully(buffer); // המתנה חסכונית בזכרון לאירוע מקש
+                            dis.readFully(buffer); // קריאה חסכונית ומהירה מאוד ⚡
 
-                            // חילוץ הערכים מתוך ה-Byte Array
                             int type = ((buffer[9] & 0xFF) << 8) | (buffer[8] & 0xFF);
                             int code = ((buffer[11] & 0xFF) << 8) | (buffer[10] & 0xFF);
                             int value = ((buffer[15] & 0xFF) << 24) | ((buffer[14] & 0xFF) << 16) 
                                       | ((buffer[13] & 0xFF) << 8) | (buffer[12] & 0xFF);
 
-                            // 1. ניטור מקש Menu (קוד 139) 📜 -> פתיחת וילון הסטטוס באר
+                            // 1. מקש Menu (קוד 139) 📜 -> וילון הסטטוס באר
                             if (type == 1 && code == 139) {
-                                if (value == 1) { // בלחיצה (DOWN)
+                                if (value == 1) {
                                     startTimeMenu = System.currentTimeMillis();
-                                } else if (value == 0 && startTimeMenu != 0) { // בשחרור (UP)
+                                } else if (value == 0 && startTimeMenu != 0) {
                                     if (System.currentTimeMillis() - startTimeMenu >= 1000) {
                                         if (prefs.getBoolean("enable_wilon", true)) {
                                             triggerSystemUIWilon();
@@ -79,7 +76,7 @@ public class ButtonMonitorService extends Service {
                                 }
                             }
 
-                            // 2. ניטור מקש # (קוד 228) 📱 -> פתיחת תפריט אפליקציות אחרונות (Recents)
+                            // 2. מקש # (קוד 228) 📱 -> אפליקציות אחרונות
                             if (type == 1 && code == 228) {
                                 if (value == 1) {
                                     startTimePound = System.currentTimeMillis();
@@ -93,7 +90,7 @@ public class ButtonMonitorService extends Service {
                                 }
                             }
 
-                            // 3. ניטור מקש 5 (קוד 6) 🖱️ -> הפעלת עכבר וירטואלי לפי אפליקציה
+                            // 3. מקש 5 (קוד 6) 🖱️ -> עכבר וירטואלי
                             if (type == 1 && code == 6) {
                                 if (value == 1) {
                                     startTimeFive = System.currentTimeMillis();
@@ -106,9 +103,6 @@ public class ButtonMonitorService extends Service {
                                     startTimeFive = 0;
                                 }
                             }
-
-                            // 4. אכיפת נעילת שורת הסטטוס 🔒 -> בהתאם לאפליקציה שבקדמה
-                            enforceStatusBarPolicy();
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -128,37 +122,14 @@ public class ButtonMonitorService extends Service {
         monitorThread.start();
     }
 
-    // פתיחת וילון ההתראות (Status Bar) 📜
     private void triggerSystemUIWilon() {
-        try {
-            Process actionProcess = Runtime.getRuntime().exec("su");
-            OutputStream os = actionProcess.getOutputStream();
-            os.write("service call statusbar 1\n".getBytes());
-            os.flush();
-            os.write("exit\n".getBytes());
-            os.flush();
-            actionProcess.waitFor();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        runSuCommand("service call statusbar 1");
     }
 
-    // פתיחת תפריט אפליקציות אחרונות (Recents) 📱
     private void openRecentsMenu() {
-        try {
-            Process actionProcess = Runtime.getRuntime().exec("su");
-            OutputStream os = actionProcess.getOutputStream();
-            os.write("service call statusbar 2\n".getBytes());
-            os.flush();
-            os.write("exit\n".getBytes());
-            os.flush();
-            actionProcess.waitFor();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        runSuCommand("service call statusbar 2");
     }
 
-    // בדיקת האפליקציה שבקדמה והפעלת עכבר וירטואלי לפי mouse_support_list 🖱️
     private void checkAndToggleMouseForCurrentApp() {
         String currentPackage = getForegroundPackage();
         if (currentPackage == null) return;
@@ -166,34 +137,38 @@ public class ButtonMonitorService extends Service {
         try {
             String mouseList = Settings.Global.getString(getContentResolver(), "mouse_support_list");
             if (mouseList != null && mouseList.contains(currentPackage)) {
-                Runtime.getRuntime().exec("su -c settings put global mouse_mode_enabled 1");
+                runSuCommand("settings put global mouse_mode_enabled 1");
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    // אכיפת מדיניות ה-Status Bar 🔒
-    private void enforceStatusBarPolicy() {
-        String currentPackage = getForegroundPackage();
-        if (currentPackage == null) return;
-
-        int mode = prefs.getInt("statusbar_" + currentPackage, 1); // 0=Allow, 1=Block, 2=Ask
-
-        if (mode == 1) { // חסום הסתרה - מונע מעבר למסך מלא
-            try {
-                Runtime.getRuntime().exec("su -c settings put global policy_control null");
-            } catch (Exception e) {}
+    // פונקציית עזר להרצת פקודות Shell בצורה בטוחה 🚀
+    private void runSuCommand(String command) {
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            OutputStream os = p.getOutputStream();
+            os.write((command + "\n").getBytes());
+            os.flush();
+            os.write("exit\n".getBytes());
+            os.flush();
+            p.waitFor();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
-    // זיהוי שם החבילה (Package Name) של האפליקציה שבקדמת המסך 🔍
     private String getForegroundPackage() {
-        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        List<ActivityManager.RunningTaskInfo> taskInfo = am.getRunningTasks(1);
-        if (taskInfo != null && !taskInfo.isEmpty()) {
-            ComponentName componentInfo = taskInfo.get(0).topActivity;
-            return componentInfo.getPackageName();
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            List<ActivityManager.RunningTaskInfo> taskInfo = am.getRunningTasks(1);
+            if (taskInfo != null && !taskInfo.isEmpty()) {
+                ComponentName componentInfo = taskInfo.get(0).topActivity;
+                return componentInfo.getPackageName();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return null;
     }
