@@ -15,7 +15,6 @@ import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.RadioGroup;
-import android.widget.Switch;
 import android.widget.TextView;
 import java.util.List;
 
@@ -26,15 +25,25 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // או בניה דינמית בקוד
+        setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
 
-        // הפעלת שירות הרקע הראשי
+        // הפעלת שירות הרקע הראשי 🚀
         Intent serviceIntent = new Intent(this, ButtonMonitorService.class);
         startService(serviceIntent);
 
-        // הגדרת מתג תפריט יישומים אחרונים (מקש #)
+        // 1. מתג פתיחת וילון הסטטוס באר (מקש Menu) 📜
+        CheckBox chkWilon = (CheckBox) findViewById(R.id.chk_wilon);
+        chkWilon.setChecked(prefs.getBoolean("enable_wilon", true));
+        chkWilon.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                prefs.edit().putBoolean("enable_wilon", isChecked).apply();
+            }
+        });
+
+        // 2. מתג תפריט יישומים אחרונים (מקש #) 📱
         CheckBox chkRecents = (CheckBox) findViewById(R.id.chk_recents);
         chkRecents.setChecked(prefs.getBoolean("enable_recents", true));
         chkRecents.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -44,7 +53,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        // הגדרת מתג עכבר וירטואלי (מקש 5)
+        // 3. מתג עכבר וירטואלי (מקש 5) 🖱️
         CheckBox chkMouse = (CheckBox) findViewById(R.id.chk_mouse);
         chkMouse.setChecked(prefs.getBoolean("enable_mouse", true));
         chkMouse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -54,7 +63,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        // טעינת רשימת האפליקציות
+        // טעינת רשימת האפליקציות 🔍
         loadAppList();
     }
 
@@ -67,7 +76,6 @@ public class MainActivity extends Activity {
         listView.setAdapter(adapter);
     }
 
-    // מתאם (Adapter) להצגת רשימת האפליקציות והבחירה עבור כל אחת
     private class AppAdapter extends ArrayAdapter<ApplicationInfo> {
         public AppAdapter(Context context, List<ApplicationInfo> apps) {
             super(context, 0, apps);
@@ -89,8 +97,8 @@ public class MainActivity extends Activity {
             appName.setText(app.loadLabel(pm));
             appIcon.setImageDrawable(app.loadIcon(pm));
 
-            // קריאת מצב שמור עבור האפליקציה: 0 = לאפשר הסתרה, 1 = לא לאפשר (חסום), 2 = לשאול
-            int currentMode = prefs.getInt("statusbar_" + app.packageName, 1); // ברירת מחדל: חסום
+            // קריאת מצב שמור עבור האפליקציה: 0 = לאפשר, 1 = לחסום, 2 = לשאול
+            int currentMode = prefs.getInt("statusbar_" + app.packageName, 1);
 
             if (currentMode == 0) statusGroup.check(R.id.radio_allow);
             else if (currentMode == 1) statusGroup.check(R.id.radio_block);
