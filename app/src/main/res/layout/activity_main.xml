@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="הגדרות מקשים וסטטוס באר"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_gravity="center"
+        android:layout_marginBottom="12dp" />
+
+    <!-- מתג 1: וילון הסטטוס באר -->
+    <CheckBox
+        android:id="@+id/chk_wilon"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="אפשר פתיחת וילון בלחיצה ארוכה על Menu" />
+
+    <!-- מתג 2: אפליקציות אחרונות -->
+    <CheckBox
+        android:id="@+id/chk_recents"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="אפשר אפליקציות אחרונות בלחיצה ארוכה על #" />
+
+    <!-- מתג 3: עכבר וירטואלי -->
+    <CheckBox
+        android:id="@+id/chk_mouse"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="אפשר עכבר וירטואלי בלחיצה על 5" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="10dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="מדיניות הסתרת Status Bar לפי אפליקציה:"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <!-- רשימת האפליקציות -->
+    <ListView
+        android:id="@+id/app_list_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>
