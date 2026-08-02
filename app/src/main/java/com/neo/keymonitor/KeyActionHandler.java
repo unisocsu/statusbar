@@ -27,8 +27,8 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
 
     @Override
     public void onKeyEvent(int code, int value) {
-        // 🔍 בדיקה ראשונית: האם שדור לחיצת מקש מגיע לכאן בכלל?
-        Log.e(TAG, "Key event received! Code: " + code + ", Value: "  + value);
+        // 🔍 בדיקה ראשונית: האם שדור לחיצת מקש מגיע לכאן?
+        Log.e(TAG, "Key event received! Code: " + code + ", Value: " + value);
 
         switch (code) {
             case 139: // מקש Menu 📜
@@ -91,17 +91,25 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
         }
 
         try {
+            // 1. קריאת הרשימה הקיימת 📋
             String mouseList = Settings.Global.getString(context.getContentResolver(), "mouse_support_list");
             if (mouseList == null) {
                 mouseList = "";
             }
+            
+            Log.e(TAG, "Current mouse_support_list value: [" + mouseList + "]");
 
-            if (!mouseList.contains(currentPackage)) {
-                String updatedList = mouseList + currentPackage + ",";
-                Log.e(TAG, "Adding package to mouse_support_list: " + updatedList);
+            // 2. בדיקת מצב Toggle: האם החבילה כבר קיימת ברשימה? 🔄
+            if (mouseList.contains(currentPackage)) {
+                // אם היא קיימת - נסיר אותה (נכבה את התמיכה) ❌
+                String updatedList = mouseList.replace(currentPackage + ",", "");
+                Log.e(TAG, "Package exists, removing it (Turning OFF): " + updatedList);
                 ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
             } else {
-                Log.e(TAG, "Package already exists in mouse_support_list.");
+                // אם היא לא קיימת - נוסיף אותה (נפעיל את התמיכה) ✅
+                String updatedList = mouseList + currentPackage + ",";
+                Log.e(TAG, "Package does not exist, adding it (Turning ON): " + updatedList);
+                ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error in checkAndToggleMouseForCurrentApp: " + e.getMessage());
@@ -110,6 +118,7 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
     }
 
     private String getForegroundPackage() {
+        // 1. שליפה דרך dumpsys window ⚡
         try {
             Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window"});
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -135,6 +144,7 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
             e.printStackTrace();
         }
 
+        // 2. גיבוי דרך ActivityManager 🛡️
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
