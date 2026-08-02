@@ -7,20 +7,27 @@ import android.os.IBinder;
 
 public class ButtonMonitorService extends Service {
 
-    private InputEventReader eventReader;
-    private Thread readerThread;
+    private InputEventReader eventReader0;
+    private InputEventReader eventReader1;
+    private Thread readerThread0;
+    private Thread readerThread1;
 
     @Override
     public void onCreate() {
         super.onCreate();
         startForegroundServiceKitKat();
 
-        // יצירת הרכיבים והפרדת רשויות מלאה 🚀
         KeyActionHandler actionHandler = new KeyActionHandler(this);
-        eventReader = new InputEventReader("/dev/input/event0", actionHandler);
 
-        readerThread = new Thread(eventReader);
-        readerThread.start();
+        // 1. האזנה ל-event0 (sprd-keypad: מקש MENU ואירועי מקלדת נוספים) 📜
+        eventReader0 = new InputEventReader("/dev/input/event0", actionHandler);
+        readerThread0 = new Thread(eventReader0);
+        readerThread0.start();
+
+        // 2. האזנה ל-event1 (sprd-gpio-keys: מקש 5, מקשי GPIO ומספרים) 🖱️⚡
+        eventReader1 = new InputEventReader("/dev/input/event1", actionHandler);
+        readerThread1 = new Thread(eventReader1);
+        readerThread1.start();
     }
 
     @SuppressWarnings("deprecation")
@@ -36,12 +43,13 @@ public class ButtonMonitorService extends Service {
 
     @Override
     public void onDestroy() {
-        if (eventReader != null) {
-            eventReader.stop();
-        }
-        if (readerThread != null) {
-            readerThread.interrupt();
-        }
+        // עצירת שני המאזינים והטרדים באופן נקי 🧹
+        if (eventReader0 != null) eventReader0.stop();
+        if (eventReader1 != null) eventReader1.stop();
+        
+        if (readerThread0 != null) readerThread0.interrupt();
+        if (readerThread1 != null) readerThread1.interrupt();
+
         ShellExecutor.getInstance().close();
         super.onDestroy();
     }
