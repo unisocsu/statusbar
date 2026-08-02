@@ -14,7 +14,8 @@ public class PoundKeyHandler {
         } else if (value == 0 && startTime != 0) {
             if (System.currentTimeMillis() - startTime >= 1500) {
                 if (prefs.getBoolean("enable_recents", true)) {
-                    ShellExecutor.getInstance().execute("service call statusbar 2");
+                    // הפעלת פקודת הקלט הישירה לפתיחת האפליקציות האחרונות ⚡
+                    ShellExecutor.getInstance().execute("input keyevent 187");
                 }
             }
             startTime = 0;
