@@ -93,7 +93,7 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
             if (!mouseList.contains(currentPackage)) {
                 String updatedList = mouseList + currentPackage + ",";
                 
-                // כתיבה ל-Settings.Global בעזרת الـ ShellExecutor הקיים בפרויקט ⚡
+                // כתיבה ל-Settings.Global בעזרת ה-ShellExecutor הקיים בפרויקט ⚡
                 ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
             }
         } catch (Exception e) {
@@ -102,28 +102,31 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
     }
 
     private String getForegroundPackage() {
-        // 1. ניסיון שליפה מהיר דרך פקודת Root על החלון הפעיל ⚡
+        // 1. שליפה ישירה ובטוחה דרך dumpsys window windows ללא שימוש בפייפ (Pipe) ⚡
         try {
-            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'"});
+            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window windows"});
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.contains("/") && !line.contains("StatusBar")) {
-                    String[] parts = line.split("u0 ");
-                    if (parts.length > 1) {
-                        String pkgAndActivity = parts[1].split(" ")[0];
+                if (line.contains("mCurrentFocus") || line.contains("mFocusedApp")) {
+                    int index = line.indexOf("u0 ");
+                    if (index != -1) {
+                        String sub = line.substring(index + 3);
+                        String pkgAndActivity = sub.split(" ")[0];
                         String pkg = pkgAndActivity.split("/")[0];
                         if (pkg != null && !pkg.isEmpty()) {
+                            process.destroy();
                             return pkg.trim();
                         }
                     }
                 }
             }
+            process.destroy();
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // 2. גיבוי בטוח דרך ActivityManager 🛡️
+        // 2. גיבוי בטוח דרך ActivityManager למקרה הצורך 🛡️
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
