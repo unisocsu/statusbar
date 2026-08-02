@@ -21,7 +21,7 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
 
-        // הפעלת שירות הניטור במידה ועדיין לא רץ ⚡
+        // הפעלת שירות הניטור ⚡
         Intent serviceIntent = new Intent(this, ButtonMonitorService.class);
         startService(serviceIntent);
 
@@ -29,17 +29,16 @@ public class MainActivity extends Activity {
     }
 
     private void initViews() {
-        CheckBox chkWilon = findViewById(R.id.chk_wilon);
-        CheckBox chkRecents = findViewById(R.id.chk_recents);
-        CheckBox chkMouse = findViewById(R.id.chk_mouse);
-        Button btnOpenAppList = findViewById(R.id.btn_open_app_list);
+        // המרות מפורשות (Casting) למניעת שגיאת קומפילציה 🛠️
+        CheckBox chkWilon = (CheckBox) findViewById(R.id.chk_wilon);
+        CheckBox chkRecents = (CheckBox) findViewById(R.id.chk_recents);
+        CheckBox chkMouse = (CheckBox) findViewById(R.id.chk_mouse);
+        Button btnOpenAppList = (Button) findViewById(R.id.btn_open_app_list);
 
-        // טעינת מצב שמור למתגים
         chkWilon.setChecked(prefs.getBoolean("enable_wilon", true));
         chkRecents.setChecked(prefs.getBoolean("enable_recents", true));
         chkMouse.setChecked(prefs.getBoolean("enable_mouse", true));
 
-        // מאזינים לשינויים במתגים
         chkWilon.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -61,7 +60,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // בלחיצה על הכפתור (או מקש אישור) - פתיחת מסך ניהול האפליקציות 🎯
         btnOpenAppList.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
