@@ -10,6 +10,7 @@
         android:label="Key Monitor System"
         android:supportsRtl="true" >
 
+        <!-- מסך ראשי -->
         <activity
             android:name=".MainActivity"
             android:exported="true" >
@@ -19,6 +20,13 @@
             </intent-filter>
         </activity>
 
+        <!-- מסך ניהול אפליקציות חדש 📲 -->
+        <activity
+            android:name=".AppListActivity"
+            android:label="ניהול הסתרת סטטוס בר"
+            android:exported="false" />
+
+        <!-- מקבל אירוע הפעלה מחדש (Boot) 🔄 -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -28,6 +36,7 @@
             </intent-filter>
         </receiver>
 
+        <!-- שירות הרקע לניטור המקשים ⚡ -->
         <service
             android:name=".ButtonMonitorService"
             android:enabled="true"
