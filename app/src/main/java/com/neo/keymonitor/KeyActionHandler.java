@@ -27,6 +27,9 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
 
     @Override
     public void onKeyEvent(int code, int value) {
+        // 🔍 בדיקה ראשונית: האם שדור לחיצת מקש מגיע לכאן בכלל?
+        Log.e(TAG, "Key event received! Code: " + code + ", Value: "  + value);
+
         switch (code) {
             case 139: // מקש Menu 📜
                 handleMenuKey(value);
@@ -81,28 +84,24 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
 
     private void checkAndToggleMouseForCurrentApp() {
         String currentPackage = getForegroundPackage();
-        Log.d(TAG, "Current foreground package detected: " + currentPackage);
+        Log.e(TAG, "Current foreground package detected: " + currentPackage);
         if (currentPackage == null || currentPackage.isEmpty()) {
-            Log.w(TAG, "Foreground package is null or empty!");
+            Log.e(TAG, "Foreground package is null or empty!");
             return;
         }
 
         try {
-            // 1. קריאת הרשימה הקיימת 📋
             String mouseList = Settings.Global.getString(context.getContentResolver(), "mouse_support_list");
             if (mouseList == null) {
                 mouseList = "";
             }
 
-            // 2. בדיקה אם ה-Package כבר קיים, ואם לא – הוספה ושמירה 🛠️
             if (!mouseList.contains(currentPackage)) {
                 String updatedList = mouseList + currentPackage + ",";
-                Log.d(TAG, "Adding package to mouse_support_list: " + updatedList);
-                
-                // כתיבה ל-Settings.Global בעזרת ה-ShellExecutor הקיים בפרויקט ⚡
+                Log.e(TAG, "Adding package to mouse_support_list: " + updatedList);
                 ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
             } else {
-                Log.d(TAG, "Package already exists in mouse_support_list.");
+                Log.e(TAG, "Package already exists in mouse_support_list.");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error in checkAndToggleMouseForCurrentApp: " + e.getMessage());
@@ -111,14 +110,13 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
     }
 
     private String getForegroundPackage() {
-        // 1. שליפה דרך dumpsys window ⚡
         try {
             Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window"});
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.contains("mCurrentFocus") || line.contains("mFocusedApp")) {
-                    Log.d(TAG, "Found focus line: " + line);
+                    Log.e(TAG, "Found focus line: " + line);
                     int index = line.indexOf("u0 ");
                     if (index != -1) {
                         String sub = line.substring(index + 3);
@@ -137,7 +135,6 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
             e.printStackTrace();
         }
 
-        // 2. גיבוי דרך ActivityManager 🛡️
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -145,7 +142,7 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
                 if (taskInfo != null && !taskInfo.isEmpty()) {
                     ComponentName componentInfo = taskInfo.get(0).topActivity;
                     if (componentInfo != null) {
-                        Log.d(TAG, "Fallback ActivityManager package: " + componentInfo.getPackageName());
+                        Log.e(TAG, "Fallback ActivityManager package: " + componentInfo.getPackageName());
                         return componentInfo.getPackageName();
                     }
                 }
