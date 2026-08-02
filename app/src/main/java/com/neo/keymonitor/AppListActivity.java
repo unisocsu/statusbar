@@ -30,7 +30,7 @@ public class AppListActivity extends Activity {
         String appName;
         String packageName;
         Drawable icon;
-        int statusSetting; // 0 = אפשר, 1 = חסום, 2 = שאל
+        int statusSetting;
     }
 
     @Override
@@ -39,7 +39,7 @@ public class AppListActivity extends Activity {
         setContentView(R.layout.activity_app_list);
 
         prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
-        listView = findViewById(R.id.app_list_view);
+        listView = (ListView) findViewById(R.id.app_list_view); // המרה מפורשת 🛠️
 
         loadInstalledApps();
     }
@@ -53,7 +53,6 @@ public class AppListActivity extends Activity {
                 List<AppInfoModel> appList = new ArrayList<>();
 
                 for (ApplicationInfo app : apps) {
-                    // סינון אפליקציות משתמש בלבד 📦
                     if ((app.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
                         AppInfoModel model = new AppInfoModel();
                         model.appName = app.loadLabel(pm).toString();
@@ -70,7 +69,7 @@ public class AppListActivity extends Activity {
             protected void onPostExecute(List<AppInfoModel> result) {
                 AppAdapter adapter = new AppAdapter(AppListActivity.this, result, prefs);
                 listView.setAdapter(adapter);
-                listView.requestFocus(); // פוקוס אוטומטי למקשים 🎯
+                listView.requestFocus();
             }
         }.execute();
     }
@@ -103,17 +102,17 @@ public class AppListActivity extends Activity {
 
             final AppInfoModel item = list.get(position);
 
-            ImageView imgIcon = convertView.findViewById(R.id.app_icon);
-            TextView txtName = convertView.findViewById(R.id.app_name);
-            RadioGroup group = convertView.findViewById(R.id.status_bar_group);
-            RadioButton radioAllow = convertView.findViewById(R.id.radio_allow);
-            RadioButton radioBlock = convertView.findViewById(R.id.radio_block);
-            RadioButton radioAsk = convertView.findViewById(R.id.radio_ask);
+            // המרות מפורשות לכל רכיב ברשימה 🛠️
+            ImageView imgIcon = (ImageView) convertView.findViewById(R.id.app_icon);
+            TextView txtName = (TextView) convertView.findViewById(R.id.app_name);
+            RadioGroup group = (RadioGroup) convertView.findViewById(R.id.status_bar_group);
+            RadioButton radioAllow = (RadioButton) convertView.findViewById(R.id.radio_allow);
+            RadioButton radioBlock = (RadioButton) convertView.findViewById(R.id.radio_block);
+            RadioButton radioAsk = (RadioButton) convertView.findViewById(R.id.radio_ask);
 
             imgIcon.setImageDrawable(item.icon);
             txtName.setText(item.appName);
 
-            // הגדרת מצב ה-RadioButtons
             group.setOnCheckedChangeListener(null);
             if (item.statusSetting == 1) {
                 radioBlock.setChecked(true);
