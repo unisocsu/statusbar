@@ -102,13 +102,13 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
     }
 
     private String getForegroundPackage() {
-        // 1. שליפה ישירה ובטוחה דרך dumpsys window windows ללא שימוש בפייפ (Pipe) ⚡
+        // 1. שליפה ישירה דרך dumpsys window (מחפש את mCurrentFocus האמיתי) ⚡
         try {
-            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window windows"});
+            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window"});
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.contains("mCurrentFocus") || line.contains("mFocusedApp")) {
+                if (line.contains("mCurrentFocus")) {
                     int index = line.indexOf("u0 ");
                     if (index != -1) {
                         String sub = line.substring(index + 3);
