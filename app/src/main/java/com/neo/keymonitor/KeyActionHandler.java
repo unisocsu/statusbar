@@ -5,6 +5,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.provider.Settings;
+import android.util.Log;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.List;
 
 public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
@@ -80,7 +83,7 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
         if (currentPackage == null || currentPackage.isEmpty()) return;
 
         try {
-            // 1. קריאת הרשימה הקיימת
+            // 1. קריאת הרשימה הקיימת 📋
             String mouseList = Settings.Global.getString(context.getContentResolver(), "mouse_support_list");
             if (mouseList == null) {
                 mouseList = "";
@@ -90,7 +93,7 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
             if (!mouseList.contains(currentPackage)) {
                 String updatedList = mouseList + currentPackage + ",";
                 
-                // כתיבה ל-Settings.Global בעזרת ה-ShellExecutor הקיים בפרויקט
+                // כתיבה ל-Settings.Global בעזרת الـ ShellExecutor הקיים בפרויקט ⚡
                 ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
             }
         } catch (Exception e) {
@@ -99,16 +102,43 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
     }
 
     private String getForegroundPackage() {
+        // 1. ניסיון שליפה מהיר דרך פקודת Root על החלון הפעיל ⚡
         try {
-            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            List<ActivityManager.RunningTaskInfo> taskInfo = am.getRunningTasks(1);
-            if (taskInfo != null && !taskInfo.isEmpty()) {
-                ComponentName componentInfo = taskInfo.get(0).topActivity;
-                return componentInfo.getPackageName();
+            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'"});
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("/") && !line.contains("StatusBar")) {
+                    String[] parts = line.split("u0 ");
+                    if (parts.length > 1) {
+                        String pkgAndActivity = parts[1].split(" ")[0];
+                        String pkg = pkgAndActivity.split("/")[0];
+                        if (pkg != null && !pkg.isEmpty()) {
+                            return pkg.trim();
+                        }
+                    }
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        // 2. גיבוי בטוח דרך ActivityManager 🛡️
+        try {
+            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                List<ActivityManager.RunningTaskInfo> taskInfo = am.getRunningTasks(1);
+                if (taskInfo != null && !taskInfo.isEmpty()) {
+                    ComponentName componentInfo = taskInfo.get(0).topActivity;
+                    if (componentInfo != null) {
+                        return componentInfo.getPackageName();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         return null;
     }
 }
