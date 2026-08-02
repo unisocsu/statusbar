@@ -12,6 +12,7 @@ import java.util.List;
 
 public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
 
+    private static final String TAG = "KeyActionHandlerDebug";
     private final Context context;
     private final SharedPreferences prefs;
 
@@ -80,7 +81,11 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
 
     private void checkAndToggleMouseForCurrentApp() {
         String currentPackage = getForegroundPackage();
-        if (currentPackage == null || currentPackage.isEmpty()) return;
+        Log.d(TAG, "Current foreground package detected: " + currentPackage);
+        if (currentPackage == null || currentPackage.isEmpty()) {
+            Log.w(TAG, "Foreground package is null or empty!");
+            return;
+        }
 
         try {
             // 1. קריאת הרשימה הקיימת 📋
@@ -92,23 +97,28 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
             // 2. בדיקה אם ה-Package כבר קיים, ואם לא – הוספה ושמירה 🛠️
             if (!mouseList.contains(currentPackage)) {
                 String updatedList = mouseList + currentPackage + ",";
+                Log.d(TAG, "Adding package to mouse_support_list: " + updatedList);
                 
                 // כתיבה ל-Settings.Global בעזרת ה-ShellExecutor הקיים בפרויקט ⚡
                 ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
+            } else {
+                Log.d(TAG, "Package already exists in mouse_support_list.");
             }
         } catch (Exception e) {
+            Log.e(TAG, "Error in checkAndToggleMouseForCurrentApp: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     private String getForegroundPackage() {
-        // 1. שליפה ישירה דרך dumpsys window (מחפש את mCurrentFocus האמיתי) ⚡
+        // 1. שליפה דרך dumpsys window ⚡
         try {
             Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "dumpsys window"});
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.contains("mCurrentFocus")) {
+                if (line.contains("mCurrentFocus") || line.contains("mFocusedApp")) {
+                    Log.d(TAG, "Found focus line: " + line);
                     int index = line.indexOf("u0 ");
                     if (index != -1) {
                         String sub = line.substring(index + 3);
@@ -123,10 +133,11 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
             }
             process.destroy();
         } catch (Exception e) {
+            Log.e(TAG, "Error executing dumpsys window via root: " + e.getMessage());
             e.printStackTrace();
         }
 
-        // 2. גיבוי בטוח דרך ActivityManager למקרה הצורך 🛡️
+        // 2. גיבוי דרך ActivityManager 🛡️
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -134,14 +145,17 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
                 if (taskInfo != null && !taskInfo.isEmpty()) {
                     ComponentName componentInfo = taskInfo.get(0).topActivity;
                     if (componentInfo != null) {
+                        Log.d(TAG, "Fallback ActivityManager package: " + componentInfo.getPackageName());
                         return componentInfo.getPackageName();
                     }
                 }
             }
         } catch (Exception e) {
+            Log.e(TAG, "Error in ActivityManager fallback: " + e.getMessage());
             e.printStackTrace();
         }
 
+        Log.e(TAG, "Failed to detect foreground package!");
         return null;
     }
 }
