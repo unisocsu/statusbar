@@ -77,12 +77,21 @@ public class KeyActionHandler implements InputEventReader.OnKeyEventListener {
 
     private void checkAndToggleMouseForCurrentApp() {
         String currentPackage = getForegroundPackage();
-        if (currentPackage == null) return;
+        if (currentPackage == null || currentPackage.isEmpty()) return;
 
         try {
+            // 1. קריאת הרשימה הקיימת
             String mouseList = Settings.Global.getString(context.getContentResolver(), "mouse_support_list");
-            if (mouseList != null && mouseList.contains(currentPackage)) {
-                ShellExecutor.getInstance().execute("settings put global mouse_mode_enabled 1");
+            if (mouseList == null) {
+                mouseList = "";
+            }
+
+            // 2. בדיקה אם ה-Package כבר קיים, ואם לא – הוספה ושמירה 🛠️
+            if (!mouseList.contains(currentPackage)) {
+                String updatedList = mouseList + currentPackage + ",";
+                
+                // כתיבה ל-Settings.Global בעזרת ה-ShellExecutor הקיים בפרויקט
+                ShellExecutor.getInstance().execute("settings put global mouse_support_list \"" + updatedList + "\"");
             }
         } catch (Exception e) {
             e.printStackTrace();
